@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DataTable } from '@/components/ui/data-table'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { apiClient } from '@/lib/api'
 import { formatDate, getStatusColor } from '@/lib/utils'
 import {
@@ -19,7 +20,9 @@ import {
   Globe,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react'
 
 export default function Sources() {
@@ -27,6 +30,7 @@ export default function Sources() {
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingSource, setEditingSource] = useState(null)
+  const [actionLoading, setActionLoading] = useState({})
   const [formData, setFormData] = useState({
     name: '',
     url: '',
@@ -44,12 +48,58 @@ export default function Sources() {
     try {
       setLoading(true)
       const response = await apiClient.getSources()
-      setSources(response.sources || [])
+      
+      // Transform backend data to frontend format
+      const transformedSources = (response.sources || []).map(source => ({
+        ...source,
+        url: source.base_url,
+        scraping_frequency: source.scraping_config?.scraping_frequency || 3600,
+        description: source.scraping_config?.description || ''
+      }))
+      
+      // Check for duplicates and remove oldest entries
+      const uniqueSources = removeDuplicates(transformedSources)
+      setSources(uniqueSources)
     } catch (error) {
       console.error('Failed to fetch sources:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  const removeDuplicates = (sources) => {
+    const seen = new Map()
+    const duplicates = []
+    
+    // Group by title and URL
+    sources.forEach(source => {
+      const key = `${source.name}-${source.url}`
+      if (seen.has(key)) {
+        const existing = seen.get(key)
+        // Keep the newer one (higher ID or more recent created_at)
+        if (source.id > existing.id || new Date(source.created_at) > new Date(existing.created_at)) {
+          duplicates.push(existing.id)
+          seen.set(key, source)
+        } else {
+          duplicates.push(source.id)
+        }
+      } else {
+        seen.set(key, source)
+      }
+    })
+    
+    // Remove duplicates from backend if any found
+    if (duplicates.length > 0) {
+      duplicates.forEach(async (id) => {
+        try {
+          await apiClient.deleteSource(id)
+        } catch (error) {
+          console.error(`Failed to remove duplicate source ${id}:`, error)
+        }
+      })
+    }
+    
+    return Array.from(seen.values())
   }
 
   const handleSubmit = async (e) => {
@@ -74,6 +124,7 @@ export default function Sources() {
       fetchSources()
     } catch (error) {
       console.error('Failed to save source:', error)
+      alert('Failed to save source. Please check the console for details.')
     }
   }
 
@@ -93,16 +144,21 @@ export default function Sources() {
   const handleDelete = async (sourceId) => {
     if (confirm('Are you sure you want to delete this source?')) {
       try {
+        setActionLoading(prev => ({ ...prev, [`delete-${sourceId}`]: true }))
         await apiClient.deleteSource(sourceId)
         fetchSources()
       } catch (error) {
         console.error('Failed to delete source:', error)
+        alert('Failed to delete source. Please check the console for details.')
+      } finally {
+        setActionLoading(prev => ({ ...prev, [`delete-${sourceId}`]: false }))
       }
     }
   }
 
   const toggleSourceStatus = async (source) => {
     try {
+      setActionLoading(prev => ({ ...prev, [`toggle-${source.id}`]: true }))
       await apiClient.updateSource(source.id, {
         ...source,
         is_active: !source.is_active
@@ -110,15 +166,22 @@ export default function Sources() {
       fetchSources()
     } catch (error) {
       console.error('Failed to toggle source status:', error)
+      alert('Failed to toggle source status. Please check the console for details.')
+    } finally {
+      setActionLoading(prev => ({ ...prev, [`toggle-${source.id}`]: false }))
     }
   }
 
   const triggerScraping = async (source) => {
     try {
-      await apiClient.triggerScraping({ source_id: source.id })
-      // You could add a toast notification here
+      setActionLoading(prev => ({ ...prev, [`scrape-${source.id}`]: true }))
+      await apiClient.triggerScraping({ source_name: source.name, name: source.name })
+      alert('Scraping triggered successfully!')
     } catch (error) {
       console.error('Failed to trigger scraping:', error)
+      alert('Failed to trigger scraping. Please check the console for details.')
+    } finally {
+      setActionLoading(prev => ({ ...prev, [`scrape-${source.id}`]: false }))
     }
   }
 
@@ -142,6 +205,235 @@ export default function Sources() {
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
     return `${Math.floor(seconds / 86400)}d`
   }
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: 'name',
+      header: 'Name',
+      cell: ({ row }) => {
+        const source = row.original
+        return (
+          <div>
+            <h4 className="font-medium">{source.name}</h4>
+            {source.description && (
+              <p className="text-sm text-gray-500 line-clamp-1">
+                {source.description}
+              </p>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: 'source_type',
+      header: 'Type',
+      cell: ({ row }) => {
+        const type = row.getValue('source_type')
+        return (
+          <Badge className={getSourceTypeColor(type)}>
+            {type.toUpperCase()}
+          </Badge>
+        )
+      },
+    },
+    {
+      accessorKey: 'is_active',
+      header: 'Status',
+      cell: ({ row }) => {
+        const isActive = row.getValue('is_active')
+        return (
+          <div className="flex items-center gap-2">
+            {isActive ? (
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            ) : (
+              <XCircle className="h-4 w-4 text-red-600" />
+            )}
+            <Badge className={isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+              {isActive ? 'Active' : 'Inactive'}
+            </Badge>
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: 'scraping_frequency',
+      header: 'Frequency',
+      cell: ({ row }) => {
+        const frequency = row.getValue('scraping_frequency')
+        return (
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3 text-gray-500" />
+            <span className="text-sm">
+              {formatFrequency(frequency)}
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: 'last_scraped',
+      header: 'Last Scraped',
+      cell: ({ row }) => {
+        const lastScraped = row.getValue('last_scraped')
+        return (
+          <span className="text-sm">
+            {formatDate(lastScraped)}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: 'article_count',
+      header: 'Articles',
+      cell: ({ row }) => {
+        const count = row.getValue('article_count')
+        return (
+          <span className="text-sm font-medium">
+            {count || 0}
+          </span>
+        )
+      },
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const source = row.original
+        return (
+          <div className="flex items-center gap-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => toggleSourceStatus(source)}
+                    disabled={actionLoading[`toggle-${source.id}`]}
+                    className="h-8 w-8 p-0"
+                  >
+                    {actionLoading[`toggle-${source.id}`] ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : source.is_active ? (
+                      <Pause className="h-3 w-3" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{source.is_active ? 'Pause' : 'Resume'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => triggerScraping(source)}
+                    disabled={actionLoading[`scrape-${source.id}`]}
+                    className="h-8 w-8 p-0"
+                  >
+                    {actionLoading[`scrape-${source.id}`] ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Database className="h-3 w-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Trigger scraping</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(source)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Edit className="h-3 w-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit source</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="h-8 w-8 p-0"
+                  >
+                    <a href={source.url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Visit source</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDelete(source.id)}
+                    disabled={actionLoading[`delete-${source.id}`]}
+                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                  >
+                    {actionLoading[`delete-${source.id}`] ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Delete source</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )
+      },
+    },
+  ], [actionLoading])
+
+  const filterOptions = [
+    {
+      column: 'source_type',
+      placeholder: 'Type',
+      options: [
+        { value: 'rss', label: 'RSS' },
+        { value: 'web', label: 'Web' },
+        { value: 'api', label: 'API' },
+      ],
+    },
+    {
+      column: 'is_active',
+      placeholder: 'Status',
+      options: [
+        { value: 'true', label: 'Active' },
+        { value: 'false', label: 'Inactive' },
+      ],
+    },
+  ]
 
   if (showAddForm) {
     return (
@@ -301,129 +593,20 @@ export default function Sources() {
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
-                <Database className="h-8 w-8 animate-pulse mx-auto mb-4" />
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
                 <p className="text-gray-600">Loading sources...</p>
               </div>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Frequency</TableHead>
-                  <TableHead>Last Scraped</TableHead>
-                  <TableHead>Articles</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sources.map((source) => (
-                  <TableRow key={source.id}>
-                    <TableCell>
-                      <div>
-                        <h4 className="font-medium">{source.name}</h4>
-                        {source.description && (
-                          <p className="text-sm text-gray-500 line-clamp-1">
-                            {source.description}
-                          </p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getSourceTypeColor(source.source_type)}>
-                        {source.source_type.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {source.is_active ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <XCircle className="h-4 w-4 text-red-600" />
-                        )}
-                        <Badge className={source.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
-                          {source.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3 text-gray-500" />
-                        <span className="text-sm">
-                          {formatFrequency(source.scraping_frequency)}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">
-                        {formatDate(source.last_scraped)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium">
-                        {source.article_count || 0}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => toggleSourceStatus(source)}
-                          title={source.is_active ? 'Pause' : 'Resume'}
-                        >
-                          {source.is_active ? (
-                            <Pause className="h-3 w-3" />
-                          ) : (
-                            <Play className="h-3 w-3" />
-                          )}
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => triggerScraping(source)}
-                          title="Trigger scraping"
-                        >
-                          <Database className="h-3 w-3" />
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(source)}
-                          title="Edit source"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          asChild
-                          title="Visit source"
-                        >
-                          <a href={source.url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        </Button>
-                        
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(source.id)}
-                          title="Delete source"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <DataTable
+              columns={columns}
+              data={sources}
+              searchKey="name"
+              searchPlaceholder="Search sources..."
+              showFilter={true}
+              filterOptions={filterOptions}
+              pageSize={10}
+            />
           )}
         </CardContent>
       </Card>
@@ -475,7 +658,7 @@ export default function Sources() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <ExternalLink className="h-5 w-5 text-orange-600" />
+              <FileText className="h-5 w-5 text-orange-600" />
               <div>
                 <p className="text-sm font-medium">Total Articles</p>
                 <p className="text-2xl font-bold">

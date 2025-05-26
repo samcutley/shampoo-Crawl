@@ -5,24 +5,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { apiClient } from '@/lib/api'
-import { formatDate, formatNumber, getSeverityColor, getStatusColor } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import {
   Activity,
   FileText,
-  Shield,
   Database,
   TrendingUp,
   AlertTriangle,
+  CheckCircle,
   Clock,
-  CheckCircle
+  Shield,
+  Globe,
+  Users,
+  BarChart3,
+  Loader2
 } from 'lucide-react'
 
 export default function Dashboard() {
-  const [stats, setStats] = useState(null)
+  const [stats, setStats] = useState({
+    totalArticles: 0,
+    activeSources: 0,
+    pendingAnalysis: 0,
+    totalIOCs: 0
+  })
   const [recentArticles, setRecentArticles] = useState([])
-  const [recentIocs, setRecentIocs] = useState([])
-  const [sources, setSources] = useState([])
-  const [systemStatus, setSystemStatus] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,29 +39,20 @@ export default function Dashboard() {
     try {
       setLoading(true)
       
-      // Fetch all dashboard data in parallel
-      const [
-        analysisStats,
-        sourcesResponse,
-        articlesResponse,
-        iocsResponse
-      ] = await Promise.all([
-        apiClient.getAnalysisStats(),
-        apiClient.getSources(),
-        apiClient.getArticles({ limit: 5 }).catch(() => ({ items: [] })),
-        apiClient.getIocs({ limit: 5 }).catch(() => ({ items: [] }))
-      ])
-
-      setStats(analysisStats)
-      setSources(sourcesResponse.sources || [])
-      setRecentArticles(articlesResponse.items || [])
-      setRecentIocs(iocsResponse.items || [])
+      // Fetch articles
+      const articlesResponse = await apiClient.getArticles({ limit: 5 })
+      setRecentArticles(articlesResponse.articles || [])
       
-      // Create a mock system status since the endpoint doesn't exist
-      setSystemStatus({
-        status: 'healthy',
-        active_workers: 1,
-        last_update: new Date().toISOString()
+      // Fetch sources
+      const sourcesResponse = await apiClient.getSources()
+      const sources = sourcesResponse.sources || []
+      
+      // Calculate stats
+      setStats({
+        totalArticles: articlesResponse.pagination?.total || 0,
+        activeSources: sources.filter(s => s.is_active).length,
+        pendingAnalysis: articlesResponse.articles?.filter(a => a.analysis_status === 'pending').length || 0,
+        totalIOCs: articlesResponse.articles?.reduce((sum, article) => sum + (article.ioc_count || 0), 0) || 0
       })
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
@@ -64,211 +61,171 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <Activity className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  const statCards = [
-    {
-      title: 'Total Articles',
-      value: stats?.recent_activity?.[0]?.articles_scraped || 0,
-      icon: FileText,
-      description: 'Analyzed articles',
-      color: 'text-blue-600'
-    },
-    {
-      title: 'IOCs Extracted',
-      value: stats?.top_ioc_types?.length || 0,
-      icon: Shield,
-      description: 'Indicators of compromise',
-      color: 'text-red-600'
-    },
-    {
-      title: 'Active Sources',
-      value: sources.filter(source => source.is_active).length,
-      icon: Database,
-      description: 'Monitored sources',
-      color: 'text-green-600'
-    },
-    {
-      title: 'Analysis Jobs',
-      value: stats?.overall_stats?.pending || 0,
-      icon: Activity,
-      description: 'Pending analysis',
-      color: 'text-orange-600'
+  const getAnalysisStatusColor = (status) => {
+    switch (status) {
+      case 'completed':
+        return 'bg-green-100 text-green-800'
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'failed':
+        return 'bg-red-100 text-red-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
     }
-  ]
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <Button onClick={fetchDashboardData} variant="outline">
-          <Activity className="h-4 w-4 mr-2" />
+        <Button onClick={fetchDashboardData} disabled={loading}>
+          {loading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Activity className="h-4 w-4 mr-2" />
+          )}
           Refresh
         </Button>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {stat.title}
-              </CardTitle>
-              <stat.icon className={`h-4 w-4 ${stat.color}`} />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{formatNumber(stat.value)}</div>
-              <p className="text-xs text-muted-foreground">
-                {stat.description}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* System Status */}
-      {systemStatus && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              System Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center gap-2">
-                <Badge className={getStatusColor(systemStatus.status)}>
-                  {systemStatus.status}
-                </Badge>
-                <span className="text-sm text-gray-600">Overall Status</span>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Articles</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalArticles}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm">{systemStatus.active_workers} Active Workers</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-600" />
-                <span className="text-sm">Last Update: {formatDate(systemStatus.last_update)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Articles */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Recent Articles
-            </CardTitle>
-            <CardDescription>
-              Latest analyzed security articles
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentArticles.length > 0 ? (
-                recentArticles.map((article) => (
-                  <div key={article.id} className="border-b border-gray-200 pb-3 last:border-b-0">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm line-clamp-2">
-                          {article.title}
-                        </h4>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {article.source_name} • {formatDate(article.published_date)}
-                        </p>
-                      </div>
-                      {article.severity && (
-                        <Badge className={getSeverityColor(article.severity)}>
-                          {article.severity}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-sm">No articles found</p>
-              )}
+              <FileText className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Recent IOCs */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Recent IOCs
-            </CardTitle>
-            <CardDescription>
-              Latest indicators of compromise
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentIocs.length > 0 ? (
-                recentIocs.map((ioc) => (
-                  <div key={ioc.id} className="border-b border-gray-200 pb-3 last:border-b-0">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm font-mono">
-                          {ioc.value}
-                        </h4>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {ioc.ioc_type} • {formatDate(ioc.first_seen)}
-                        </p>
-                      </div>
-                      {ioc.confidence && (
-                        <Badge variant="outline">
-                          {ioc.confidence}% confidence
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-sm">No IOCs found</p>
-              )}
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Active Sources</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.activeSources}</p>
+              </div>
+              <Database className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending Analysis</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.pendingAnalysis}</p>
+              </div>
+              <Clock className="h-8 w-8 text-yellow-600" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total IOCs</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.totalIOCs}</p>
+              </div>
+              <Shield className="h-8 w-8 text-red-600" />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Articles */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5" />
+            Recent Articles
+          </CardTitle>
+          <CardDescription>
+            Latest intelligence articles from your sources
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p className="text-gray-600">Loading articles...</p>
+            </div>
+          ) : recentArticles.length > 0 ? (
+            <div className="space-y-4">
+              {recentArticles.map((article) => (
+                <div key={article.id} className="flex items-start justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900 mb-1">
+                      {article.title}
+                    </h3>
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Globe className="h-4 w-4" />
+                        {article.source_name || 'Unknown Source'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {formatDate(article.published_date)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getAnalysisStatusColor(article.analysis_status)}>
+                      {article.analysis_status || 'pending'}
+                    </Badge>
+                    {article.url && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={article.url} target="_blank" rel="noopener noreferrer">
+                          View
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <p>No articles found</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>
         <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>
-            Common tasks and operations
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Quick Actions
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button variant="outline" className="h-20 flex-col">
-              <TrendingUp className="h-6 w-6 mb-2" />
-              Trigger Analysis
+            <Button className="h-20 flex-col gap-2" variant="outline" asChild>
+              <a href="/sources">
+                <Database className="h-6 w-6" />
+                <span>Manage Sources</span>
+              </a>
             </Button>
-            <Button variant="outline" className="h-20 flex-col">
-              <Database className="h-6 w-6 mb-2" />
-              Manage Sources
+            <Button className="h-20 flex-col gap-2" variant="outline" asChild>
+              <a href="/articles">
+                <FileText className="h-6 w-6" />
+                <span>View Articles</span>
+              </a>
             </Button>
-            <Button variant="outline" className="h-20 flex-col">
-              <AlertTriangle className="h-6 w-6 mb-2" />
-              View Alerts
+            <Button className="h-20 flex-col gap-2" variant="outline" asChild>
+              <a href="/iocs">
+                <Shield className="h-6 w-6" />
+                <span>Review IOCs</span>
+              </a>
             </Button>
           </div>
         </CardContent>

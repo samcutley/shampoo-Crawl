@@ -32,16 +32,42 @@ class ApiClient {
   }
 
   async createSource(sourceData) {
+    // Transform frontend data to backend format
+    const backendData = {
+      name: sourceData.name,
+      base_url: sourceData.url,
+      source_type: sourceData.source_type,
+      is_active: sourceData.is_active,
+      scraping_config: {
+        scraping_frequency: sourceData.scraping_frequency,
+        description: sourceData.description || '',
+        ...sourceData.scraping_config
+      }
+    }
+    
     return this.request('/sources', {
       method: 'POST',
-      body: JSON.stringify(sourceData),
+      body: JSON.stringify(backendData),
     })
   }
 
   async updateSource(sourceId, sourceData) {
+    // Transform frontend data to backend format
+    const backendData = {
+      name: sourceData.name,
+      base_url: sourceData.url,
+      source_type: sourceData.source_type,
+      is_active: sourceData.is_active,
+      scraping_config: {
+        scraping_frequency: sourceData.scraping_frequency,
+        description: sourceData.description || '',
+        ...sourceData.scraping_config
+      }
+    }
+    
     return this.request(`/sources/${sourceId}`, {
       method: 'PUT',
-      body: JSON.stringify(sourceData),
+      body: JSON.stringify(backendData),
     })
   }
 
@@ -74,9 +100,15 @@ class ApiClient {
 
   // Scraping
   async triggerScraping(sourceData) {
+    // Backend expects source_name, not source_id
+    const payload = {
+      source_name: sourceData.source_name || sourceData.name,
+      job_type: 'manual'
+    }
+    
     return this.request('/scraping/trigger', {
       method: 'POST',
-      body: JSON.stringify(sourceData),
+      body: JSON.stringify(payload),
     })
   }
 
