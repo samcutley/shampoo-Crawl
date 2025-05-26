@@ -111,7 +111,7 @@ export function DataTable({
                   <Select
                     key={filter.column}
                     value={
-                      (table.getColumn(filter.column)?.getFilterValue() as string) ?? ''
+                      table.getColumn(filter.column)?.getFilterValue() ?? ''
                     }
                     onValueChange={(value) =>
                       table.getColumn(filter.column)?.setFilterValue(value === 'all' ? '' : value)
