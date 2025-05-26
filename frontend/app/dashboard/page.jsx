@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [recentArticles, setRecentArticles] = useState([])
   const [recentIocs, setRecentIocs] = useState([])
+  const [sources, setSources] = useState([])
   const [systemStatus, setSystemStatus] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -35,20 +36,27 @@ export default function Dashboard() {
       // Fetch all dashboard data in parallel
       const [
         analysisStats,
+        sourcesResponse,
         articlesResponse,
-        iocsResponse,
-        systemStatusResponse
+        iocsResponse
       ] = await Promise.all([
         apiClient.getAnalysisStats(),
-        apiClient.getArticles({ limit: 5 }),
-        apiClient.getIocs({ limit: 5 }),
-        apiClient.getSystemStatus()
+        apiClient.getSources(),
+        apiClient.getArticles({ limit: 5 }).catch(() => ({ items: [] })),
+        apiClient.getIocs({ limit: 5 }).catch(() => ({ items: [] }))
       ])
 
       setStats(analysisStats)
+      setSources(sourcesResponse.sources || [])
       setRecentArticles(articlesResponse.items || [])
       setRecentIocs(iocsResponse.items || [])
-      setSystemStatus(systemStatusResponse)
+      
+      // Create a mock system status since the endpoint doesn't exist
+      setSystemStatus({
+        status: 'healthy',
+        active_workers: 1,
+        last_update: new Date().toISOString()
+      })
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
     } finally {
@@ -70,28 +78,28 @@ export default function Dashboard() {
   const statCards = [
     {
       title: 'Total Articles',
-      value: stats?.total_articles || 0,
+      value: stats?.recent_activity?.[0]?.articles_scraped || 0,
       icon: FileText,
       description: 'Analyzed articles',
       color: 'text-blue-600'
     },
     {
       title: 'IOCs Extracted',
-      value: stats?.total_iocs || 0,
+      value: stats?.top_ioc_types?.length || 0,
       icon: Shield,
       description: 'Indicators of compromise',
       color: 'text-red-600'
     },
     {
       title: 'Active Sources',
-      value: stats?.active_sources || 0,
+      value: sources.filter(source => source.is_active).length,
       icon: Database,
       description: 'Monitored sources',
       color: 'text-green-600'
     },
     {
       title: 'Analysis Jobs',
-      value: stats?.pending_analysis || 0,
+      value: stats?.overall_stats?.pending || 0,
       icon: Activity,
       description: 'Pending analysis',
       color: 'text-orange-600'

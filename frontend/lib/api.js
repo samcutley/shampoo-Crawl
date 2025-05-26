@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://work-1-reytgktxuoazkkrw.prod-runtime.all-hands.dev/api/v1'
 
 class ApiClient {
   async request(endpoint, options = {}) {
@@ -91,7 +91,13 @@ class ApiClient {
   }
 
   async getHealth() {
-    return this.request('/health')
+    // Health endpoint is not under /api/v1, it's directly on the root
+    const url = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || 'https://work-1-reytgktxuoazkkrw.prod-runtime.all-hands.dev'
+    const response = await fetch(`${url}/health`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    return await response.json()
   }
 
   // Search

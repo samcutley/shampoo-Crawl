@@ -44,7 +44,7 @@ export default function Sources() {
     try {
       setLoading(true)
       const response = await apiClient.getSources()
-      setSources(response || [])
+      setSources(response.sources || [])
     } catch (error) {
       console.error('Failed to fetch sources:', error)
     } finally {
@@ -136,6 +136,7 @@ export default function Sources() {
   }
 
   const formatFrequency = (seconds) => {
+    if (!seconds || isNaN(seconds)) return 'Auto'
     if (seconds < 60) return `${seconds}s`
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m`
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`
