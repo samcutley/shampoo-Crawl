@@ -28,14 +28,36 @@ export default function Articles() {
     limit: 20,
     total: 0
   })
+  // Cache for storing fetched pages
+  const [pageCache, setPageCache] = useState(new Map())
+  const [lastSearchQuery, setLastSearchQuery] = useState('')
 
   useEffect(() => {
     fetchArticles()
   }, [pagination.page, pagination.limit])
 
+  const getCacheKey = (page, limit, search = '') => {
+    return `${page}-${limit}-${search}`
+  }
+
   const fetchArticles = async () => {
     try {
       setLoading(true)
+      
+      const cacheKey = getCacheKey(pagination.page, pagination.limit, searchQuery)
+      
+      // Check if we have cached data for this page and search hasn't changed
+      if (pageCache.has(cacheKey) && searchQuery === lastSearchQuery) {
+        const cachedData = pageCache.get(cacheKey)
+        setArticles(cachedData.articles)
+        setPagination(prev => ({
+          ...prev,
+          total: cachedData.total
+        }))
+        setLoading(false)
+        return
+      }
+
       const params = {
         page: pagination.page,
         limit: pagination.limit,
@@ -43,11 +65,26 @@ export default function Articles() {
       }
       
       const response = await apiClient.getArticles(params)
-      setArticles(response.articles || [])
+      const articlesData = response.articles || []
+      const totalCount = response.pagination?.total || 0
+      
+      setArticles(articlesData)
       setPagination(prev => ({
         ...prev,
-        total: response.pagination?.total || 0
+        total: totalCount
       }))
+
+      // Cache the response
+      setPageCache(prev => {
+        const newCache = new Map(prev)
+        newCache.set(cacheKey, {
+          articles: articlesData,
+          total: totalCount
+        })
+        return newCache
+      })
+      
+      setLastSearchQuery(searchQuery)
     } catch (error) {
       console.error('Failed to fetch articles:', error)
     } finally {
@@ -56,6 +93,8 @@ export default function Articles() {
   }
 
   const handleSearch = () => {
+    // Clear cache when performing a new search
+    setPageCache(new Map())
     setPagination(prev => ({ ...prev, page: 1 }))
     fetchArticles()
   }
