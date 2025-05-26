@@ -29,7 +29,12 @@ class ScrapingService:
         
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
         })
     
     async def scrape_source(self, source_id: int, source_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -109,6 +114,8 @@ class ScrapingService:
     async def _scrape_website(self, base_url: str, source_id: int, config: Dict[str, Any]) -> Dict[str, Any]:
         """Scrape website for articles"""
         try:
+            # Add a small delay to be respectful
+            time.sleep(1)
             response = self.session.get(base_url, timeout=self.timeout)
             response.raise_for_status()
             
@@ -116,6 +123,9 @@ class ScrapingService:
             
             # Extract article links based on configuration
             article_links = self._extract_article_links(soup, base_url, config)
+            logger.info(f"DEBUG: Found {len(article_links)} article links")
+            if article_links:
+                logger.info(f"DEBUG: First few links: {article_links[:3]}")
             
             articles_found = len(article_links)
             articles_new = 0
@@ -221,8 +231,9 @@ class ScrapingService:
         """Extract article links from page"""
         links = []
         
-        # Default selectors for common article link patterns
-        selectors = config.get('link_selectors', [
+        # Get selectors from config or use defaults
+        scraping_config = config.get('scraping_config', {})
+        selectors = scraping_config.get('link_selectors', [
             'a[href*="/article/"]',
             'a[href*="/post/"]',
             'a[href*="/blog/"]',
@@ -233,14 +244,18 @@ class ScrapingService:
             'h3 a'
         ])
         
+        logger.info(f"DEBUG: Using selectors: {selectors}")
+        
         for selector in selectors:
             elements = soup.select(selector)
+            logger.info(f"DEBUG: Selector '{selector}' found {len(elements)} elements")
             for elem in elements:
                 href = elem.get('href')
                 if href:
                     full_url = urljoin(base_url, href)
                     if self._is_valid_article_url(full_url, base_url):
                         links.append(full_url)
+                        logger.info(f"DEBUG: Added valid link: {full_url}")
         
         return list(set(links))  # Remove duplicates
     
