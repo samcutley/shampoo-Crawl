@@ -22,7 +22,8 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Loader2
+  Loader2,
+  FileText
 } from 'lucide-react'
 
 export default function Sources() {

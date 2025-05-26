@@ -43,9 +43,9 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("AI service connection successful")
         
-        # Start workers
-        logger.info("Starting analysis workers...")
-        await worker_manager.start()
+        # Start workers (temporarily disabled due to errors)
+        logger.info("Analysis workers disabled temporarily...")
+        # await worker_manager.start()
         
         # Start scheduler
         logger.info("Starting task scheduler...")
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
         
         try:
             await scheduler.stop()
-            await worker_manager.stop()
+            # await worker_manager.stop()
             logger.info("Application shutdown completed")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
