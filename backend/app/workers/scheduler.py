@@ -13,7 +13,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from ..core.config import settings
 from ..core.logging_config import get_logger
-from ..services.scraping_service import scraping_service
+from ..services.scraping_service_simple import scraping_service
 from ..db.database import db_manager
 
 logger = get_logger("scheduler")

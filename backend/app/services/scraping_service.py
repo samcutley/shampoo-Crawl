@@ -9,9 +9,9 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 from datetime import datetime
 import time
-
-from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
-from crawl4ai.extraction_strategy import JsonCssExtractionStrategy
+import requests
+from bs4 import BeautifulSoup
+import aiohttp
 
 from ..core.config import settings
 from ..core.logging_config import get_logger

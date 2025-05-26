@@ -11,7 +11,7 @@ from datetime import datetime
 from ..core.config import settings
 from ..core.logging_config import get_logger
 from ..db.database import db_manager
-from ..services.ai_analysis import ai_service
+from ..services.ai_analysis_simple import ai_analysis_service
 
 logger = get_logger("analysis_worker")
 
@@ -111,11 +111,7 @@ class AnalysisWorker:
             }
             
             # Perform AI analysis
-            analysis_result, error_message = await ai_service.analyze_content(
-                content=article["content"],
-                source_url=url,
-                article_metadata=metadata
-            )
+            analysis_result = await ai_analysis_service.analyze_article(article_id)
             
             if analysis_result:
                 # Save analysis result

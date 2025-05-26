@@ -213,3 +213,9 @@ class DatabaseManager:
 
 # Global database instance
 db_manager = DatabaseManager()
+
+def init_db():
+    """Initialize database - convenience function"""
+    global db_manager
+    db_manager = DatabaseManager()
+    return db_manager
