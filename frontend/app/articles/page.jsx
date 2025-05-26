@@ -43,10 +43,10 @@ export default function Articles() {
       }
       
       const response = await apiClient.getArticles(params)
-      setArticles(response.items || [])
+      setArticles(response.articles || [])
       setPagination(prev => ({
         ...prev,
-        total: response.total || 0
+        total: response.pagination?.total || 0
       }))
     } catch (error) {
       console.error('Failed to fetch articles:', error)
