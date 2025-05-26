@@ -55,7 +55,7 @@ class SourceConfig(BaseModel):
 class Config(BaseModel):
     # Server configuration
     host: str = Field(default="0.0.0.0", description="Server host")
-    port: int = Field(default=8000, description="Server port")
+    port: int = Field(default=12000, description="Server port")
     debug: bool = Field(default=False, description="Debug mode")
     
     # Component configurations

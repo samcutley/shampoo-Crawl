@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List
 import logging
+import json
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -379,16 +380,34 @@ class TaskScheduler:
     async def trigger_scraping_job(self, source_name: str) -> bool:
         """Manually trigger a scraping job"""
         try:
-            # Find the source configuration
-            source_config = None
-            for source in settings.sources:
-                if source.name == source_name:
-                    source_config = source.dict()
-                    break
+            # Find the source in the database
+            sources = db_manager.execute_query(
+                "SELECT * FROM sources WHERE name = ? AND is_active = 1",
+                (source_name,)
+            )
             
-            if not source_config:
+            if not sources:
                 logger.error(f"Source not found: {source_name}")
                 return False
+            
+            source_db = dict(sources[0])
+            
+            # Parse scraping_config JSON if it exists
+            scraping_config = {}
+            if source_db.get("scraping_config"):
+                try:
+                    scraping_config = json.loads(source_db["scraping_config"])
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid JSON in scraping_config for source {source_name}")
+            
+            # Convert database source to config format
+            source_config = {
+                "name": source_db["name"],
+                "base_url": source_db["base_url"],
+                "source_type": source_db["source_type"],
+                "is_active": source_db["is_active"],
+                "scraping_config": scraping_config
+            }
             
             # Run the scraping job
             await self._scrape_source_job(source_config)

@@ -53,7 +53,7 @@ export default function Articles() {
   const fetchStats = async () => {
     try {
       const response = await apiClient.getAnalysisStats()
-      if (response) {
+      if (response && Array.isArray(response)) {
         const statusCounts = response.reduce((acc, item) => {
           acc[item.analysis_status] = item.count
           return acc
@@ -65,9 +65,24 @@ export default function Articles() {
           pending: statusCounts.pending || 0,
           failed: statusCounts.failed || 0
         })
+      } else {
+        // Fallback: calculate stats from articles data
+        setStats({
+          total: articles.length,
+          analyzed: articles.filter(a => a.analysis_status === 'completed').length,
+          pending: articles.filter(a => a.analysis_status === 'pending').length,
+          failed: articles.filter(a => a.analysis_status === 'failed').length
+        })
       }
     } catch (error) {
       console.error('Failed to fetch stats:', error)
+      // Fallback: calculate stats from articles data
+      setStats({
+        total: articles.length,
+        analyzed: articles.filter(a => a.analysis_status === 'completed').length,
+        pending: articles.filter(a => a.analysis_status === 'pending').length,
+        failed: articles.filter(a => a.analysis_status === 'failed').length
+      })
     }
   }
 

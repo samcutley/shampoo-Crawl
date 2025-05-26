@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { NavigationLink } from '@/components/navigation/NavigationLink'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { 
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react'
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
+  { name: 'Dashboard', href: '/', icon: Home },
   { name: 'Sources', href: '/sources', icon: Database },
   { name: 'Articles', href: '/articles', icon: FileText },
   { name: 'IOCs', href: '/iocs', icon: Shield },
@@ -69,7 +70,7 @@ export function Sidebar({ collapsed, onToggle }) {
         {navigation.map((item) => {
           const isActive = pathname === item.href
           return (
-            <Link
+            <NavigationLink
               key={item.name}
               href={item.href}
               className={cn(
@@ -83,7 +84,7 @@ export function Sidebar({ collapsed, onToggle }) {
             >
               <item.icon className={cn("h-5 w-5", !collapsed && "mr-3")} />
               {!collapsed && <span>{item.name}</span>}
-            </Link>
+            </NavigationLink>
           )
         })}
       </nav>
@@ -140,7 +141,7 @@ export function MobileSidebar({ open, onClose }) {
           {navigation.map((item) => {
             const isActive = pathname === item.href
             return (
-              <Link
+              <NavigationLink
                 key={item.name}
                 href={item.href}
                 onClick={onClose}
@@ -153,7 +154,7 @@ export function MobileSidebar({ open, onClose }) {
               >
                 <item.icon className="h-5 w-5 mr-3" />
                 <span>{item.name}</span>
-              </Link>
+              </NavigationLink>
             )
           })}
         </nav>

@@ -9,6 +9,7 @@ import { DataTable } from '@/components/ui/data-table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { apiClient } from '@/lib/api'
 import { formatDate, getStatusColor } from '@/lib/utils'
+import { toast } from 'sonner'
 import {
   Database,
   Plus,
@@ -165,9 +166,10 @@ export default function Sources() {
         is_active: !source.is_active
       })
       fetchSources()
+      toast.success(`Source ${source.name} ${source.is_active ? 'paused' : 'activated'} successfully!`)
     } catch (error) {
       console.error('Failed to toggle source status:', error)
-      alert('Failed to toggle source status. Please check the console for details.')
+      toast.error(`Failed to toggle source status for ${source.name}: ${error.message || 'Unknown error'}`)
     } finally {
       setActionLoading(prev => ({ ...prev, [`toggle-${source.id}`]: false }))
     }
@@ -176,11 +178,16 @@ export default function Sources() {
   const triggerScraping = async (source) => {
     try {
       setActionLoading(prev => ({ ...prev, [`scrape-${source.id}`]: true }))
-      await apiClient.triggerScraping({ source_name: source.name, name: source.name })
-      alert('Scraping triggered successfully!')
+      await apiClient.triggerScraping({ 
+        source_name: source.name,
+        job_type: 'manual'
+      })
+      toast.success(`Scraping triggered successfully for ${source.name}`)
+      // Refresh sources to get updated status
+      fetchSources()
     } catch (error) {
       console.error('Failed to trigger scraping:', error)
-      alert('Failed to trigger scraping. Please check the console for details.')
+      toast.error(`Failed to trigger scraping for ${source.name}: ${error.message || 'Unknown error'}`)
     } finally {
       setActionLoading(prev => ({ ...prev, [`scrape-${source.id}`]: false }))
     }
